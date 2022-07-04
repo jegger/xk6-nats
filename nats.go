@@ -1,7 +1,6 @@
 package nats
 
 import (
-	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -62,18 +61,7 @@ func (n *Nats) client(c goja.ConstructorCall) *goja.Object {
 		common.Throw(rt, fmt.Errorf("Nats constructor expect Configuration as it's argument: %w", err))
 	}
 
-	natsOptions := natsio.GetDefaultOptions()
-	natsOptions.Servers = cfg.Servers
-	if cfg.Unsafe {
-		natsOptions.TLSConfig = &tls.Config{
-			InsecureSkipVerify: true,
-		}
-	}
-	if cfg.Token != "" {
-		natsOptions.Token = cfg.Token
-	}
-
-	conn, err := natsOptions.Connect()
+	conn, err := natsio.Connect(cfg.Servers, natsio.UserCredentials(cfg.Credsfile))
 	if err != nil {
 		common.Throw(rt, err)
 	}
@@ -131,9 +119,8 @@ func (n *Nats) Request(subject, data string) (Message, error) {
 }
 
 type Configuration struct {
-	Servers []string
-	Unsafe  bool
-	Token   string
+	Servers string
+	Credsfile   string
 }
 
 type Message struct {

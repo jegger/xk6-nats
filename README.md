@@ -36,8 +36,7 @@ A Nats instance represents the connection with the NATS server, and it is create
 | Attribute | Description |
 | --- | --- |
 | servers | (mandatory) is the list of servers where NATS is available (e.g. `[nats://localhost:4222]`) |
-| unsafe | (optional) allows running with self-signed certificates when doing tests against a testing environment, it is a boolean value (default value is `false`) |
-| token | (optional) is the value of the token used to connect to the NATS server |
+| Credsfile | (mandatory) Path to the credentials file |
 
 #### Available functions
 
@@ -71,8 +70,8 @@ import {check, sleep} from 'k6';
 import {Nats} from 'k6/x/nats';
 
 const natsConfig = {
-    servers: ['nats://localhost:4222'],
-    unsafe: true,
+    servers: 'nats://localhost:4222',
+    credsfile: 'backend.creds',
 };
 
 const publisher = new Nats(natsConfig);
@@ -108,7 +107,8 @@ import { Nats } from 'k6/x/nats';
 import { check, sleep } from 'k6';
 
 const natsClient = new Nats({
-  servers: ['nats://localhost:4222'],
+  servers: 'nats://localhost:4222',
+  credsfile: 'backend.creds'
 });
 
 export default function () {
@@ -119,7 +119,7 @@ export default function () {
     const res = natsClient.request('my.subject', JSON.stringify(payload));
 
     check(res, {
-        'payload pushed': (r) => r.status === 'success',
+        'payload pushed': (r) => r.data === 'success',
     });
 }
 

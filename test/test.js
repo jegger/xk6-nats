@@ -2,8 +2,8 @@ import {check, sleep} from 'k6';
 import {Nats} from 'k6/x/nats';
 
 const natsConfig = {
-    servers: ['nats://localhost:4222'],
-    unsafe: true,
+    servers: 'nats://localhost:4222',
+    credsfile: 'backend.creds',
 };
 
 const publisher = new Nats(natsConfig);
