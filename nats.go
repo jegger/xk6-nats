@@ -3,6 +3,7 @@ package nats
 import (
 	"crypto/tls"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/grafana/sobek"
@@ -73,8 +74,18 @@ func (n *Nats) client(c sobek.ConstructorCall) *sobek.Object {
 		natsOptions.Token = cfg.Token
 	}
 
+	if headers := cfg.wsHeaders(); headers != nil {
+		natsOptions.WebSocketConnectionHeaders = headers
+	}
+	if cfg.InboxPrefix != "" {
+		natsOptions.InboxPrefix = cfg.InboxPrefix
+	}
+
 	conn, err := natsOptions.Connect()
 	if err != nil {
+		if (cfg.JWT != "" || cfg.CookieJWT != "") && err.Error() == "EOF" {
+			common.Throw(rt, fmt.Errorf("connection failed (JWT may be invalid or expired): %w", err))
+		}
 		common.Throw(rt, err)
 	}
 
@@ -90,9 +101,21 @@ func (n *Nats) Close() {
 	}
 }
 
-func (n *Nats) Publish(topic, message string) error {
+func (n *Nats) Publish(topic, message string, headers ...map[string]string) error {
 	if n.conn == nil {
 		return fmt.Errorf("the connection is not valid")
+	}
+
+	if len(headers) > 0 && headers[0] != nil {
+		msg := &natsio.Msg{
+			Subject: topic,
+			Data:    []byte(message),
+			Header:  natsio.Header{},
+		}
+		for k, v := range headers[0] {
+			msg.Header.Set(k, v)
+		}
+		return n.conn.PublishMsg(msg)
 	}
 
 	return n.conn.Publish(topic, []byte(message))
@@ -114,9 +137,28 @@ func (n *Nats) Subscribe(topic string, handler MessageHandler) error {
 	return err
 }
 
-func (n *Nats) Request(subject, data string) (Message, error) {
+func (n *Nats) Request(subject, data string, headers ...map[string]string) (Message, error) {
 	if n.conn == nil {
 		return Message{}, fmt.Errorf("the connection is not valid")
+	}
+
+	if len(headers) > 0 && headers[0] != nil {
+		msg := &natsio.Msg{
+			Subject: subject,
+			Data:    []byte(data),
+			Header:  natsio.Header{},
+		}
+		for k, v := range headers[0] {
+			msg.Header.Set(k, v)
+		}
+		resp, err := n.conn.RequestMsg(msg, 5*time.Second)
+		if err != nil {
+			return Message{}, err
+		}
+		return Message{
+			Data:  string(resp.Data),
+			Topic: resp.Subject,
+		}, nil
 	}
 
 	msg, err := n.conn.Request(subject, []byte(data), 5*time.Second)
@@ -131,9 +173,26 @@ func (n *Nats) Request(subject, data string) (Message, error) {
 }
 
 type Configuration struct {
-	Servers []string
-	Unsafe  bool
-	Token   string
+	Servers   []string `js:"servers"`
+	Unsafe    bool     `js:"unsafe"`
+	Token     string   `js:"token"`
+	JWT          string `js:"jwt"`
+	CookieJWT    string `js:"cookieJwt"`
+	InboxPrefix  string `js:"inboxPrefix"`
+}
+
+func (c *Configuration) wsHeaders() http.Header {
+	if c.JWT == "" && c.CookieJWT == "" {
+		return nil
+	}
+	h := make(http.Header)
+	if c.JWT != "" {
+		h.Set("Authorization", "Bearer "+c.JWT)
+	}
+	if c.CookieJWT != "" {
+		h.Set("Cookie", "nats="+c.CookieJWT)
+	}
+	return h
 }
 
 type Message struct {
